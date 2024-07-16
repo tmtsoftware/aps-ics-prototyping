@@ -2,7 +2,7 @@
 
 class GuidingPreprocessingSimulator {
 
-    private static final int SHORT_FILE_SIZE = 128 * 128;
+    private static final int SHORT_FILE_SIZE = 2048 * 2048;
 
     public static void main(String[] args) {
 

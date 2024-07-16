@@ -6,7 +6,7 @@ import java.nio.channels.FileChannel;
 class MemoryMapRead {
     private static final String SHORT_FILENAME = "/Users/smichaels/Desktop/JavaTest/imageFile";
     private static final String FLOAT_FILENAME = "/Users/smichaels/Desktop/JavaTest/floatImageFile";
-    private static final long FLOAT_FILE_SIZE = 8192 * 8192 * 4;
+    private static final long SHORT_FILE_SIZE = 8192 * 8192 * 2;
 
     public static void main(String[] args) throws IOException {
 
@@ -21,24 +21,25 @@ class MemoryMapRead {
             MappedByteBuffer shortMbb =
                     shortChannel.map(FileChannel.MapMode.READ_WRITE,
                             0,          // position
-                            shortChannel.size());
-            MappedByteBuffer floatMbb =
+                            SHORT_FILE_SIZE);
+        /*    
+        MappedByteBuffer floatMbb =
                     floatChannel.map(FileChannel.MapMode.READ_WRITE,
                             0,          // position
                             FLOAT_FILE_SIZE);
-
+        */
         for (int j=0; j<10; j++) {
             long startTime = System.currentTimeMillis();
 
             int length = shortMbb.limit() / 2;
 
-	    floatMbb.clear(); // start at beginning
+	    shortMbb.clear(); // start at beginning
 
             for (int i = 0; i < length; i++) {
-                floatMbb.putFloat((float)shortMbb.getShort(i));
+                short temp = shortMbb.getShort(i);
             }
 
-            System.out.println("Total read and convert time: " + (System.currentTimeMillis() - startTime) + ", length = " + length);
+            System.out.println("Total read time: " + (System.currentTimeMillis() - startTime) + ", length = " + length);
         }
 
             shortChannel.close();

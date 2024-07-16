@@ -2,6 +2,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.util.*;
 
 class MemoryMapWrite2k {
     private static final String SHORT_FILENAME = "/Users/smichaels/Desktop/JavaTest/imageFile";
@@ -23,8 +24,10 @@ class MemoryMapWrite2k {
                             0,          // position
                             SHORT_FILE_SIZE);
             
-
-        for (int j=0; j<10; j++) {
+        
+        long[] delta = new long[1000];
+        
+        for (int j=0; j<1000; j++) {
             long startTime = System.currentTimeMillis();
 
             int length = shortMbb.limit() / 2;
@@ -35,8 +38,25 @@ class MemoryMapWrite2k {
                 shortMbb.putShort((short)(i % 32767));
             }
 
-            System.out.println("Total writetime: " + (System.currentTimeMillis() - startTime) + ", length = " + length);
+            delta[j] = System.currentTimeMillis() - startTime;
+            //System.out.println("Write time: " + delta[j]);
+            
         }
+        
+        float total = 0;
+        long max = 0;
+        
+        List<Integer> overages = new ArrayList<Integer>();
+        for (int i=0; i<1000; i++) {
+            total = total + delta[i];
+            if (delta[i] > max) max = delta[i];
+            if (delta[i] > 10) overages.add(i);
+        }
+        
+        System.out.println("Write time average: " + (total/1000.0) + " max = " + max);
+        
+        System.out.println("trials over 10 ms : " + overages);
+
 
             shortChannel.close();
             

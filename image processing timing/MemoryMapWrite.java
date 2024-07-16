@@ -35,7 +35,8 @@ class MemoryMapWrite {
                 shortMbb.putShort((short)(i % 32767));
             }
 
-            System.out.println("Total writetime: " + (System.currentTimeMillis() - startTime) + ", length = " + length);
+            long endTime = System.currentTimeMillis();
+            System.out.println("Total writetime: " + (endTime - startTime) + ", length = " + length);
         }
 
             shortChannel.close();

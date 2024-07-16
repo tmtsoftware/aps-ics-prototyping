@@ -1,37 +1,35 @@
-public class ConvertShortArrayToFloatArray {
+public class ConvertIntArrayToFloatArray {
     public static void main(String[] args) {
         int arraySize = 8120 * 8120;
 
-        short[] shortArray = new short[arraySize];
+        int[] intArray = new int[arraySize];
         // Initialize your short array here...
 
         float[] floatArray = new float[arraySize];
 
-        
-        double max = 0.0;
         double totalTimeInMilliseconds = 0;
+        double max = 0.0;
         
         for (int i=0; i<100; i++) {
-            
             long startTime = System.nanoTime();
 
-            convertShortArrayToFloatArray(shortArray, floatArray);
+            convertIntArrayToFloatArray(intArray, floatArray);
 
             long endTime = System.nanoTime();
 
             double deltaTime = (endTime - startTime) / 1_000_000;
             totalTimeInMilliseconds += deltaTime;
             max = (max < deltaTime) ? deltaTime : max;
-         }
+        }
 
         System.out.println("Average Conversion time 100 trials: " + totalTimeInMilliseconds/100.0 + " milliseconds,   max time = " + max);
     }
 
-    private static void convertShortArrayToFloatArray(short[] shortArray, float[] floatArray) {
+    private static void convertIntArrayToFloatArray(int[] intArray, float[] floatArray) {
         // Perform the conversion logic here...
 
-        for (int i = 0; i < shortArray.length; i++) {
-            floatArray[i] = shortArray[i];
+        for (int i = 0; i < intArray.length; i++) {
+            floatArray[i] = intArray[i];
         }
 
     }
