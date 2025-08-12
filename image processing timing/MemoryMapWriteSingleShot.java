@@ -15,7 +15,7 @@
  *   - fsync/force() or disk flushes
  *
  * Usage:
- *   java MemoryMapWriteSingleShot [width height [outDir]]
+ *   java MemoryMapWriteSingleShot [width height [outDir] [bytesPerPixel]]
  *     width/height: ROI in pixels (default 1020x1020)
  *     outDir:       output directory (default $TMPDIR/aps or /tmp/aps)
  *   Assumes 16-bit pixels (2 B/px). Adjust in code if needed.
@@ -39,23 +39,28 @@ import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 
 public class MemoryMapWriteSingleShot {
-  // Defaults: 1020x1020 @ 16-bit
-  static final int DEFAULT_WIDTH = 1020;
+  // Defaults
+  static final int DEFAULT_WIDTH  = 1020;
   static final int DEFAULT_HEIGHT = 1020;
-  static final int BYTES_PER_PIXEL = 2; // 16-bit pixels
+  static final int DEFAULT_BPP    = 2; // 16-bit
 
   static int align4096(int n) { int r = n & 4095; return (r == 0) ? n : (n + (4096 - r)); }
 
   public static void main(String[] args) throws IOException {
-    if (args.length == 1 || args.length > 3) {
-      System.err.println("Usage: java MemoryMapWriteSingleShot [width height [outDir]]");
+    // Usage: [width height [outDir] [bytesPerPixel]]
+    if (args.length == 1 || args.length > 4) {
+      System.err.println("Usage: java MemoryMapWriteSingleShot [width height [outDir] [bytesPerPixel]]");
       System.exit(2);
     }
 
-    int width = DEFAULT_WIDTH, height = DEFAULT_HEIGHT;
+    int width  = DEFAULT_WIDTH;
+    int height = DEFAULT_HEIGHT;
+    int bpp    = DEFAULT_BPP;
+
+    // Parse width/height if provided
     if (args.length >= 2) {
       try {
-        width = Integer.parseInt(args[0]);
+        width  = Integer.parseInt(args[0]);
         height = Integer.parseInt(args[1]);
         if (width <= 0 || height <= 0) throw new NumberFormatException("non-positive");
       } catch (NumberFormatException nfe) {
@@ -64,9 +69,9 @@ public class MemoryMapWriteSingleShot {
       }
     }
 
-    // Pick output dir: $TMPDIR/aps (mac preferred) -> /tmp/aps (fallback) unless provided
+    // Choose output dir: explicit arg -> $TMPDIR/aps -> /tmp/aps
     Path outDir;
-    if (args.length == 3) {
+    if (args.length >= 3) {
       outDir = Paths.get(args[2]);
     } else {
       String tmpEnv = System.getenv("TMPDIR");
@@ -76,12 +81,23 @@ public class MemoryMapWriteSingleShot {
     }
     Files.createDirectories(outDir);
 
-    final int frameBytes  = Math.multiplyExact(Math.multiplyExact(width, height), BYTES_PER_PIXEL);
+    // Optional bytes-per-pixel
+    if (args.length == 4) {
+      try {
+        bpp = Integer.parseInt(args[3]);
+        if (bpp <= 0) throw new NumberFormatException("non-positive");
+      } catch (NumberFormatException nfe) {
+        System.err.println("bytesPerPixel must be a positive integer. Got: " + args[3]);
+        System.exit(2);
+      }
+    }
+
+    final int frameBytes  = Math.multiplyExact(Math.multiplyExact(width, height), bpp);
     final int mappedBytes = align4096(frameBytes);
     final Path path = outDir.resolve(
-        String.format("single_shot_%dx%d_%dbpp.bin", width, height, BYTES_PER_PIXEL * 8));
+        String.format("single_shot_%dx%d_%dbpp.bin", width, height, bpp * 8));
 
-    // Simulated µManager image bytes; contents don’t affect copy timing
+    // Simulated camera bytes; contents don’t affect copy timing
     final byte[] src = new byte[frameBytes];
 
     try (FileChannel ch = FileChannel.open(
@@ -101,7 +117,7 @@ public class MemoryMapWriteSingleShot {
 
       // Measure end-to-end (position + copy) and copy-only separately
       long endToEndStartNs = System.nanoTime();
-      mbb.position(0);                      // tiny but included in end-to-end
+      mbb.position(0);                      // included in end-to-end
       long t0 = System.nanoTime();
       mbb.put(src);                         // ONE bulk copy
       long t1 = System.nanoTime();
@@ -116,7 +132,7 @@ public class MemoryMapWriteSingleShot {
 
       System.out.printf(
           "Single-shot bulk copy -> %dx%d @ %d B/px => %,d bytes (mapped %,d) -> %s%n",
-          width, height, BYTES_PER_PIXEL, frameBytes, mappedBytes, path.toAbsolutePath());
+          width, height, bpp, frameBytes, mappedBytes, path.toAbsolutePath());
       System.out.printf("Totals: copy=%.3f ms | end-to-end=%.3f ms%n", copyMs, endToEndMs);
       System.out.printf("Throughput: copy-only=%.2f GiB/s | end-to-end=%.2f GiB/s%n",
           copyGiBs, endToEndGiBs);
