@@ -1,3 +1,36 @@
+/**
+ * MemoryMapWriteSingleShot
+ *
+ * Single-shot timing probe for the Detector HCD copy path.
+ * Measures the time to copy ONE image frame into a memory-mapped file
+ * using a single bulk ByteBuffer.put(...). Also reports an “end-to-end”
+ * timing that includes lightweight positioning overhead.
+ *
+ * What it measures:
+ *   - copy-only:   time around mbb.put(src) (pure bulk copy)
+ *   - end-to-end:  position + bulk copy (no mapping or flush)
+ *
+ * Not measured:
+ *   - camera/SDK/µManager delivery latency
+ *   - fsync/force() or disk flushes
+ *
+ * Usage:
+ *   java MemoryMapWriteSingleShot [width height [outDir]]
+ *     width/height: ROI in pixels (default 1020x1020)
+ *     outDir:       output directory (default $TMPDIR/aps or /tmp/aps)
+ *   Assumes 16-bit pixels (2 B/px). Adjust in code if needed.
+ *
+ * Output:
+ *   - path of the mapped file
+ *   - frame size in bytes (and mapped length)
+ *   - copy-only ms, end-to-end ms
+ *   - throughput in GiB/s for both timings
+ *
+ * Notes:
+ *   - The file is created/truncated once and mapped once (size = frame bytes).
+ *   - No per-pixel loops; a single bulk copy reflects HCD behaviour.
+ */
+
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;

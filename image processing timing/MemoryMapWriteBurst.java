@@ -1,3 +1,39 @@
+/**
+ * MemoryMapWriteBurst
+ *
+ * Burst-mode timing probe for the Detector HCD copy path.
+ * Writes MANY frames into ONE container file using memory-mapped I/O.
+ * The container is window-mapped in <= 2 GiB chunks as needed; each frame
+ * is copied with a single bulk ByteBuffer.put(...) at offset i*frameBytes.
+ *
+ * What it measures:
+ *   - copy-only total: sum of mbb.put(...) times over all frames
+ *   - end-to-end total: loop time including positioning and any remaps
+ *   - remap time: time spent creating new mapping windows (reported separately)
+ *
+ * Not measured:
+ *   - camera/SDK/µManager delivery latency
+ *   - fsync/force() or disk flushes
+ *
+ * Usage:
+ *   java MemoryMapWriteBurst [width height frameCount [outDir] [bytesPerPixel]]
+ *     width/height:    ROI in pixels (default 1020x1020)
+ *     frameCount:      number of frames to write (default 1000)
+ *     outDir:          output directory (default /tmp/aps)
+ *     bytesPerPixel:   1 for 8-bit, 2 for 16-bit (default 2)
+ *
+ * Output:
+ *   - container path and size
+ *   - total copy ms, end-to-end ms, remap ms, remap count
+ *   - throughput in GiB/s for copy-only and end-to-end
+ *
+ * Notes:
+ *   - Ensures each frame fits wholly within the active mapping window;
+ *     remaps when crossing a window boundary.
+ *   - No per-frame map/unmap, no force() in the hot path.
+ *   - Reflects the final HCD design: one container file, offset-per-frame writes.
+ */
+
 import java.io.IOException;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
