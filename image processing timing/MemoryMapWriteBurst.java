@@ -23,7 +23,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * This isolates trials from each other and prevents steady writeback backlog
  * growth across trials, which was inflating later measurements.
  *
- * Usage (unchanged):
+ * Usage:
  *   java MemoryMapWriteBurst [width height frameCount [outDir] [bytesPerPixel] [pattern] [trials]]
  *     width/height   ROI in pixels (default 1020×1020)
  *     frameCount     number of frames (default 1000)
