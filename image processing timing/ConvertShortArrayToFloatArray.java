@@ -45,14 +45,14 @@ public class ConvertShortArrayToFloatArray {
 
             long endTime = System.nanoTime();
 
-            double deltaTime = (endTime - startTime) / 1_000_000;
+            double deltaTime = (endTime - startTime) / 1_000_000.0;
             if (i >= BURN_IN_TRIALS) {
                 totalTimeInMilliseconds += deltaTime;
                 if (deltaTime > max) max = deltaTime;
             }
          }
 
-        System.out.println("Average Conversion time 100 trials: " + totalTimeInMilliseconds/iterations + " milliseconds,   max time = " + max);
+        System.out.printf("Average Conversion time 100 trials: %.5f ms,   max time = %.5f ms\n", totalTimeInMilliseconds/iterations, max);
     }
 
     private static void convertShortArrayToFloatArray(short[] shortArray, float[] floatArray) {
