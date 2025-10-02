@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Run MMHelloWorld",
+      "request": "launch",
+      "mainClass": "MMHelloWorld",
+      "cwd": "${workspaceFolder}/image processing timing/MM2_tests",
+      "classPaths": [
+        "bin",
+        "lib/mmcorej.jar"
+      ],
+      "vmArgs": "-Djava.library.path=native"
+    }
+  ]
+}
