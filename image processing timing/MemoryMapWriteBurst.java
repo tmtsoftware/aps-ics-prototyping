@@ -156,47 +156,53 @@ public class MemoryMapWriteBurst {
         " mean=" + String.format("%.2f", mean(remArr)));
   }
 
-  // -------------------- Core timed trial --------------------
+// -------------------- Core timed trial (FIXED windowing logic) --------------------
   private static TrialResult runOneTimedTrial(FileChannel ch, byte[] src,
                                               int frameBytes, long containerBytes) throws IOException {
-    long windowStart = -1L;
-    MappedByteBuffer map = null;
-    int remaps = 0;
-
     long copyNsTotal  = 0L;
     long remapNsTotal = 0L;
     long end2endStart = System.nanoTime();
 
-    final long frames = containerBytes / (long) frameBytes;
-    for (int i = 0; i < frames; i++) {
-      long offset = (long) i * frameBytes;
-      long end    = offset + frameBytes;
+    int remaps = 0;
+    final int totalFrames = (int) (containerBytes / frameBytes);
+    
+    MappedByteBuffer map = null;
+    long currentWindowStart = -1;
+    int currentWindowLen = 0;
 
-      boolean needsRemap = (map == null)
-          || (offset < windowStart)
-          || (end > windowStart + (long) (map == null ? 0 : map.capacity()));
-
+    for (int frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
+      long frameOffset = (long) frameIndex * frameBytes;
+      long frameEnd = frameOffset + frameBytes;
+      
+      // Check if current frame fits in the current window
+      boolean needsRemap = (map == null) || 
+                          (frameOffset < currentWindowStart) || 
+                          (frameEnd > currentWindowStart + currentWindowLen);
+      
       if (needsRemap) {
-        long newStart = Math.max(0L, end - WINDOW_BYTES);     // ensure whole frame fits window
-        int  mapLen   = (int) Math.min(WINDOW_BYTES, containerBytes - newStart);
-
+        // Start new window at this frame's offset
+        long windowStart = frameOffset;
+        
+        // Window extends as far as possible (up to WINDOW_BYTES) but must stay within container
+        long maxWindowEnd = Math.min(windowStart + WINDOW_BYTES, containerBytes);
+        int windowLen = (int) (maxWindowEnd - windowStart);
+        
+        // Create new mapping
         long t0 = System.nanoTime();
-        map = ch.map(FileChannel.MapMode.READ_WRITE, newStart, mapLen);
+        map = ch.map(FileChannel.MapMode.READ_WRITE, windowStart, windowLen);
+        map.position(0); 
         long t1 = System.nanoTime();
-
-        windowStart = newStart;
+        
+        currentWindowStart = windowStart;
+        currentWindowLen = windowLen;
         remaps++;
         remapNsTotal += (t1 - t0);
       }
 
-      int dstPos = (int) (offset - windowStart);
-      map.position(dstPos);
-
-      long t0 = System.nanoTime();
+      long c0 = System.nanoTime();
       map.put(src);
-      long t1 = System.nanoTime();
-
-      copyNsTotal += (t1 - t0);
+      long c1 = System.nanoTime();
+      copyNsTotal += (c1 - c0);
     }
 
     long end2endEnd = System.nanoTime();

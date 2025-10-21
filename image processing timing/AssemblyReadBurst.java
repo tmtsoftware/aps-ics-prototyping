@@ -10,23 +10,29 @@ import java.util.List;
  * AssemblyReadBurst
  *
  * Burst READ timing probe for the Assembly side.
- * Maps a multi-frame "container" file (HCD burst output) in ≤2 GiB windows and measures:
+ * Reads multiple burst container files (one per trial) to measure realistic first-access performance.
+ * Each trial reads a different file written by MemoryMapWriteBurst, avoiding OS page cache warming.
+ *
+ * Maps each container file in ≤2 GiB windows and measures:
  *   - copy mode:  full container read into a reusable chunked byte[] buffer
  *   - touch mode: page-sampling (1 byte per 4 KiB) across the container
  *
  * Stabilization:
  *   - Prefault (optional): read-only page touches per window to warm cache (disabled by default)
  *   - CPU warmup: short spin to stabilize clocks/JIT
- *   - Burn-in: one timed pass printed (not included in summaries)
+ *   - NO BURN-IN: Each trial reads a fresh file to measure realistic first-access cost
  *
  * Usage:
- *   java AssemblyReadBurst <path> <width> <height> <frameCount> [bytesPerPixel] [mode] [trials]
- *     path           absolute path to the burst container
+ *   java AssemblyReadBurst <outDir> <width> <height> <frameCount> [bytesPerPixel] [mode] [trials]
+ *     outDir         directory containing burst container files
  *     width/height   ROI in pixels
- *     frameCount     number of frames in the container
+ *     frameCount     number of frames per container
  *     bytesPerPixel  1, 2, or 4 (default 2)
  *     mode           copy | touch (default copy)
- *     trials         number of measured trials (default 1)
+ *     trials         number of files to read (default 1)
+ *
+ * Files are auto-discovered using pattern:
+ *   burst_container_{width}x{height}_{bpp}bpp_{frameCount}frames_trial{NN}.bin
  *
  * Output:
  *   - per-trial: copy ms, end-to-end ms, remap ms, remap count
@@ -44,16 +50,16 @@ public class AssemblyReadBurst {
   private static final int    COPY_CHUNK     = 16 * 1024 * 1024;   // 16 MiB reusable buffer
 
   // Stabilization knobs (no CLI)
-  private static final boolean ENABLE_PREFAULT = false;  // set true to warm pages before burn-in
+  private static final boolean ENABLE_PREFAULT = false;  // set true to warm pages before measurement
   private static final int     CPU_WARMUP_MS   = 100;    // short spin to stabilize clocks/JIT
 
   public static void main(String[] args) throws IOException {
     if (args.length < 4 || args.length > 7) {
-      System.err.println("Usage: java AssemblyReadBurst <path> <width> <height> <frameCount> [bytesPerPixel] [mode] [trials]");
+      System.err.println("Usage: java AssemblyReadBurst <outDir> <width> <height> <frameCount> [bytesPerPixel] [mode] [trials]");
       System.exit(2);
     }
 
-    Path path     = Paths.get(args[0]);
+    Path outDir   = Paths.get(args[0]);
     int  width    = parsePos(args[1], "width");
     int  height   = parsePos(args[2], "height");
     int  frames   = parsePos(args[3], "frameCount");
@@ -63,16 +69,34 @@ public class AssemblyReadBurst {
 
     if (!mode.equals("copy") && !mode.equals("touch"))
       throw new IllegalArgumentException("mode must be 'copy' or 'touch'");
+    if (!Files.isDirectory(outDir))
+      throw new IllegalArgumentException("outDir must be a directory: " + outDir);
 
     final long frameBytes     = Math.multiplyExact(Math.multiplyExact((long) width, (long) height), (long) bpp);
     final long containerBytes = Math.multiplyExact(frameBytes, (long) frames);
-    final long fileBytes      = Files.size(path);
-    if (fileBytes < containerBytes) {
-      throw new IllegalArgumentException("File smaller than expected container size: file=" + fileBytes + " < expected=" + containerBytes);
-    }
 
-    System.out.printf("Assembly burst read -> %s (%,d bytes)%n", path.toAbsolutePath(), fileBytes);
+    System.out.printf("Assembly burst read -> %s%n", outDir.toAbsolutePath());
     System.out.printf("Config: %dx%d @ %d B/px, frames=%d, mode=%s, trials=%d%n", width, height, bpp, frames, mode, trials);
+    System.out.printf("Expected container size: %,d bytes%n", containerBytes);
+
+    // Build file paths for all trials
+    List<Path> filePaths = new ArrayList<>(trials);
+    for (int t = 1; t <= trials; t++) {
+      String filename = String.format("burst_container_%dx%d_%dbpp_%dframes_trial%02d.bin",
+          width, height, bpp * 8, frames, t);
+      Path path = outDir.resolve(filename);
+      if (!Files.exists(path)) {
+        throw new IllegalArgumentException("Required file not found: " + path + 
+            "\nGenerate files first using: java MemoryMapWriteBurst " + width + " " + height + " " + 
+            frames + " " + outDir + " " + bpp + " random " + trials);
+      }
+      long fileBytes = Files.size(path);
+      if (fileBytes < containerBytes) {
+        throw new IllegalArgumentException("File smaller than expected: " + path + 
+            " (file=" + fileBytes + " < expected=" + containerBytes + ")");
+      }
+      filePaths.add(path);
+    }
 
     // Reusable copy buffer (for copy mode)
     final byte[] dstChunk = mode.equals("copy") ? new byte[(int) Math.min(COPY_CHUNK, containerBytes)] : new byte[1];
@@ -82,28 +106,25 @@ public class AssemblyReadBurst {
     List<Double> remapMs   = new ArrayList<>(trials);
     List<Integer> remaps   = new ArrayList<>(trials);
 
-    try (FileChannel ch = FileChannel.open(path, StandardOpenOption.READ)) {
+    // CPU warmup once at start
+    cpuWarmupMillis(CPU_WARMUP_MS);
 
-      if (ENABLE_PREFAULT) {
-        prefault(ch, containerBytes); // warm up page cache (optional)
-      }
+    // Read each file once (no burn-in per trial)
+    for (int t = 0; t < trials; t++) {
+      Path path = filePaths.get(t);
+      
+      try (FileChannel ch = FileChannel.open(path, StandardOpenOption.READ)) {
+        if (ENABLE_PREFAULT) {
+          prefault(ch, containerBytes); // warm up page cache (optional)
+        }
 
-      cpuWarmupMillis(CPU_WARMUP_MS);
-
-      // Timed burn-in (printed, not summarized)
-      Trial r0 = timeOneRead(ch, containerBytes, mode, dstChunk);
-      System.out.printf("Burn-in: copy=%.3f ms | end-to-end=%.3f ms | remap=%.3f ms | remaps=%d%n",
-          r0.copyMs, r0.endToEndMs, r0.remapMs, r0.remaps);
-
-      // Measured trials
-      for (int t = 1; t <= trials; t++) {
         Trial r = timeOneRead(ch, containerBytes, mode, dstChunk);
         copyMs.add(r.copyMs);
         end2endMs.add(r.endToEndMs);
         remapMs.add(r.remapMs);
         remaps.add(r.remaps);
-        System.out.printf("Trial %d/%d: copy=%.3f ms | end-to-end=%.3f ms | remap=%.3f ms | remaps=%d%n",
-            t, trials, r.copyMs, r.endToEndMs, r.remapMs, r.remaps);
+        System.out.printf("Trial %d/%d (%s): copy=%.3f ms | end-to-end=%.3f ms | remap=%.3f ms | remaps=%d%n",
+            t + 1, trials, path.getFileName(), r.copyMs, r.endToEndMs, r.remapMs, r.remaps);
       }
     }
 
