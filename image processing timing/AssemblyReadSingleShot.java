@@ -17,7 +17,7 @@ import java.util.List;
  * Stabilization:
  *   - Prefault:   map.load() + linear read-only touches to bring pages resident (no dirty IO)
  *   - CPU warmup: short spin to stabilize clocks/JIT
- *   - Burn-in:    one timed pass printed but not included in summaries
+ *   - Burn-in:    none performed as it hides the cost of disk access
  *
  * Usage:
  *   java AssemblyReadSingleShot <path> <width> <height> [bytesPerPixel] [mode] [trials]
@@ -39,7 +39,7 @@ public class AssemblyReadSingleShot {
   private static final int    DEFAULT_TRIALS = 1;
 
   // Stabilization knobs (no CLI)
-  private static final boolean ENABLE_PREFAULT     = true;   // map.load + page touch
+  private static final boolean ENABLE_PREFAULT     = false;   // map.load + page touch
   private static final int     CPU_WARMUP_MS       = 100;    // short spin
   private static final int     BURN_IN_TRIALS      = 1;      // print but don’t summarize
   private static final int     PAGE_SIZE           = 4096;
@@ -92,7 +92,7 @@ public class AssemblyReadSingleShot {
       cpuWarmupMillis(CPU_WARMUP_MS);
 
       // Burn-in (timed but not summarized)
-      runOneRead(map, mode, (int)frameBytes, true, copyMs, end2endMs); // prints line, does not add to lists
+     // runOneRead(map, mode, (int)frameBytes, true, copyMs, end2endMs); // prints line, does not add to lists
 
       // Measured trials
       for (int t = 1; t <= trials; t++) {
